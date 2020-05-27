@@ -1,19 +1,6 @@
-library(shiny)
-library(shinyFiles)
-library(stringr)
-library(sjmisc)
-library(dplyr,warn.conflicts=FALSE)
-library(tidyr)
-library(shinyjs)
-library(DiagrammeR)
-library(shinyAce)
-library(ggplot2)
-library(rlist)
-library(phydose)
-library(plotly)
-library(shinydashboard)
 
-ui <- dashboardPage(
+
+ui <- dashboardPage( skin='black',
     dashboardHeader(title = "PhyDOSE-IT"),
     
     dashboardSidebar(
@@ -21,21 +8,22 @@ ui <- dashboardPage(
                   accept = c(".csv", ".tsv", ".txt")),
         sliderInput("quantile", "Quantile for k*:",0,1,1,step=0.01,ticks=FALSE),
         sliderInput("fn", "False negative rate:",0,0.5,0,step=0.01,ticks=FALSE),
-        actionButton("run", "Run PhyDOSE"),
+        
         sidebarMenu(
             menuItem("Advanced toggles", 
                      tabName="advanced",
-                     icon = icon("spinner"),
-                     sliderInput("gmin", "Gamma minimum:",0.01,0.99,0.01,step=0.01,ticks=FALSE),
-                     sliderInput("gmax", "Gamma maximum:",0.01,0.99,0.99,step=0.01,ticks=FALSE),
-                     sliderInput("gresolution", "Gamma resolution:",0.01,0.1,0.01,step=0.01,ticks=FALSE)
+                     icon = icon("plus"),
+                     sliderInput("gmin", "𝛾 minimum:",0.01,0.99,0.01,step=0.01,ticks=FALSE),
+                     sliderInput("gmax", "𝛾 maximum:",0.01,0.99,0.99,step=0.01,ticks=FALSE),
+                     sliderInput("gresolution", "𝛾 resolution:",0.01,0.1,0.01,step=0.01,ticks=FALSE)
             )
         ),
+        actionButton("run", "Run PhyDOSE"),
         sidebarMenu(
             menuItem("Example datasets", 
                      tabName="egdatasets",
-                     icon = icon("spinner"),
-                     actionButton("runSim","Simulation dataset 1"),
+                     icon = icon("table"),
+                     #actionButton("runSim","Simulation dataset 1",width='auto'),
                      actionButton("runALL","ALL patient"),
                      actionButton("runAML","AML patient")
                      )
@@ -45,51 +33,54 @@ ui <- dashboardPage(
     dashboardBody(
         fluidRow(
             column(12, align="center",
-                   h3(textOutput("num_cells")), 
+                   h3("Design of Follow-up Single-cell Sequencing Experiments of Tumors"), 
             )
         ),
         fluidRow(
             box(
                 width=9,
+                h4(textOutput("num_cells")),
                 plotlyOutput(outputId="kvscl"),
+                br(),
+                sliderInput("gamma", 
+                            NULL,
+                            0.01,0.99,0.95,
+                            step=0.01,
+                            ticks=FALSE,
+                            width='90%'),
+                align='center',
+                height='540px'
             ),
             box(
                 width=3,
+                h4(textOutput("box_title")),
                 plotlyOutput(outputId ="box_jitter"),
+                br(),
+                
+                align='center',
+                justify='center',
+                height='540px',
+                actionButton("clearChosenTree", "Reset", width='100%'),
+                #tableOutput('detTable'),
+                #DT::dataTableOutput('dtt')
             ),
-        ),
-        br(),
-
-        fluidRow(
-            box(
-                width=4,
-                h4("Details"),
-                textOutput("treeNumDetail"),
-                textOutput("sampleNumDetail"),
-                textOutput("quantileNumDetail")
-            ),
-                box(width=7, align="center",
-                       sliderInput("gamma", 
-                                   "Confidence level",
-                                   0.01,0.99,0.95,
-                                   step=0.01,
-                                   ticks=FALSE,
-                                   width='80%'),
-                ),
-                actionButton("clearChosenTree", "Reset graphs"),
         ),
         fluidRow(
             h3("Compare and visualize trees", align="center"),
             box(
                 width = 6,
                 column(align="center",
-                       selectInput("treeNum", "Select Tree:",
-                                   c()),
+                       selectizeInput("treeNum", "Select Tree:",
+                                   c(), options= list(maxOptions = 10000)),
                        selectInput("dfNum", "Select Distinguishing Feature:",
                                    c()),
                        selectInput("featuretteNum", "Select Featurette:",
                                    c()),
-                       actionButton("plotTree1", "Plot this tree"),
+                       
+                       checkboxInput("showF1", "Show F matrix"),
+                       checkboxInput("showU1", "Show U matrix"),
+                       actionButton("plotTree1", "Plot tree", width='100%'),
+                       actionButton("downloadTree1", "Download tree", width='100%'),
                        width=5
                 ),
                 column(align="center",grVizOutput('graphV'),width=7),
@@ -99,17 +90,21 @@ ui <- dashboardPage(
             
             box(
                 width = 6,
+                column(align="center",grVizOutput('graphV2'),width=7),
                 column(align="center",
-                       selectInput("treeNum2", "Select Tree:",
-                                   c()),
+                       selectizeInput("treeNum2", "Select Tree:",
+                                   c(), options= list(maxOptions = 10000)),
                        selectInput("dfNum2", "Select Distinguishing Feature:",
                                    c()),
                        selectInput("featuretteNum2", "Select Featurette:",
                                    c()),
-                       actionButton("plotTree2", "Plot this tree"),
+                       checkboxInput("showF2", "Show F matrix"),
+                       checkboxInput("showU2", "Show U matrix"),
+                       actionButton("plotTree2", "Plot tree", width="100%"),
+                       actionButton("downloadTree2", "Download tree", width='100%'),
                        width=5
                 ),
-                column(align="center",grVizOutput('graphV2'),width=7),
+                
                 ),
         ),
   
