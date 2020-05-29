@@ -57,6 +57,14 @@ create_box_jitter <- function(per_tree_k, chosen_tree, chosen_gamma){
     return(p)
 }
 
+get_max_tree <- function(per_tree_k, chosen_gamma){
+    max_cells <- max(per_tree_k$cells)
+    filtered_k <- filter(per_tree_k, gamma >= chosen_gamma-0.001 & gamma <= chosen_gamma+0.001)
+    max_cells_filtered <- max(filtered_k$cells) # get the max number of cells
+    max_tree <- head(filter(filtered_k, cells == max_cells_filtered),1)$tree_id
+    return(max_tree)
+}
+
 # returns the quantile of the chosen tree for the chosen gamma
 get_quantile_and_tree <- function(per_tree_k, chosen_tree, chosen_gamma){
     
@@ -66,10 +74,7 @@ get_quantile_and_tree <- function(per_tree_k, chosen_tree, chosen_gamma){
         max_tree <- head(filter(filtered_k, cells == max_cells_filtered),1)
         chosen_tree <- head(filter(filtered_k, cells == max_cells_filtered),1)$tree_id
     }
-    print(paste("chosen tree", chosen_tree))
-    filtered_k <- filter(per_tree_k, gamma==chosen_gamma)
     num_cells <- head(filter(filtered_k, tree_id == chosen_tree),1)$cells
-    print(paste("num cells", num_cells))
     # method to get quantile from https://stat.ethz.ch/pipermail/r-help/2012-March/305368.html
     return(list(tree=chosen_tree,quantile=mean(filtered_k$cells <= num_cells)))
 }
@@ -79,15 +84,34 @@ get_diagrammer_tree <- function(parse_data, all_dff, tree_num, df_num, featurett
         return (NULL)
     }
     tree <- parse_data$trees[[as.numeric(tree_num)]]
-    featurette <- all_dff[[as.numeric(tree_num)]][[as.numeric(df_num)]][[as.numeric(featurette_num)]]
+    
     u <- NULL
     f <- NULL
-    if (showu){
-        f <- parse_data$fmatrices[[as.numeric(tree_num)]]
-    }
     if (showf){
+        if (is.matrix(parse_data$fmatrices) || length( parse_data$fmatrices) == 1){
+            f <- parse_data$fmatrices
+        }
+        else{
+            f <- parse_data$fmatrices[[as.numeric(tree_num)]]
+        }
+    }
+    if (showu){
         u <- parse_data$u_list[[as.numeric(tree_num)]]
     }
-    d_graph <- plotTree(tree, featurette=featurette)
+    d_graph <- NULL
+    # case for show all featurettes
+    if (as.numeric(featurette_num) == 0){
+        distfeat <- all_dff[[as.numeric(tree_num)]][[as.numeric(df_num)]]
+        d_graph <- plotTree(tree, distfeat = distfeat, u=u, f=f)
+    }
+    # case for show no featurettes
+    else if (as.numeric(featurette_num) == -1){
+        d_graph <- plotTree(tree, u=u, f=f)
+    }
+    # case for show a specific featurette
+    else{
+        featurette <- all_dff[[as.numeric(tree_num)]][[as.numeric(df_num)]][[as.numeric(featurette_num)]] 
+        d_graph <- plotTree(tree, featurette=featurette, u=u, f=f)
+    }
     return(d_graph)
 }

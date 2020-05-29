@@ -35,7 +35,7 @@ server <- function(input, output, session) {
     })
     
     observeEvent(input$clearChosenTree,{
-        values$chosenTree <- NULL
+        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
     })
     
     observeEvent(event_data(event="plotly_click", source="mysource"),{
@@ -46,18 +46,18 @@ server <- function(input, output, session) {
         )
     })
     
-    observeEvent(values$ret,{
-        req(values$ret)
-        labels <- create_labels("Tree", length(values$ret$parse_data$trees))
-        updateSelectizeInput(session, "treeNum",
-                          label = paste0("Select tree [", length(labels)," trees]"),
-                          choices = labels
-        )
-        updateSelectizeInput(session, "treeNum2",
-                          label = paste0("Select tree [", length(labels)," trees]"),
-                          choices = labels
-        )
-    })
+    # observeEvent(values$ret,{
+    #     req(values$ret)
+    #     labels <- create_labels("Tree", length(values$ret$parse_data$trees))
+    #     updateSelectizeInput(session, "treeNum",
+    #                       label = paste0("Select tree [", length(labels)," trees]"),
+    #                       choices = labels
+    #     )
+    #     updateSelectizeInput(session, "treeNum2",
+    #                       label = paste0("Select tree [", length(labels)," trees]"),
+    #                       choices = labels
+    #     )
+    # })
     
     observeEvent({
         input$treeNum
@@ -115,6 +115,8 @@ server <- function(input, output, session) {
             "Featurette", 
             length(values$ret$all_dff[[as.numeric(treeNum)]][[as.numeric(dfNum)]])
             )
+        labels[["Show all"]] <- 0
+        labels[["Show none"]] <- -1
         updateSelectInput(session, "featuretteNum",
                           label = "Select featurette",
                           choices = labels
@@ -141,6 +143,8 @@ server <- function(input, output, session) {
             "Featurette", 
             length(values$ret$all_dff[[as.numeric(treeNum2)]][[as.numeric(dfNum2)]])
         )
+        labels[["Show all"]] <- 0
+        labels[["Show none"]] <- -1
         updateSelectInput(session, "featuretteNum2",
                           label = "Select featurette",
                           choices = labels
@@ -227,7 +231,7 @@ server <- function(input, output, session) {
                                      cells = numeric(),
                                      gamma = numeric())
             for(g in gamma_list){
-                incProgress(0.002, detail = paste("Calculating values for k =", g))
+                incProgress(0.002, detail = paste("Calculating values for 𝛾 =", g))
                 phydose_ret <- phydose(
                     parse_data$tree, 
                     parse_data$fmatrices, 
@@ -259,10 +263,7 @@ server <- function(input, output, session) {
         })
         
         labels <- create_labels("Tree", length(ret$parse_data$trees))
-        updateSelectizeInput(session, "treeNum",
-                             label = paste0("Select tree [", length(labels)," trees]"),
-                             choices = labels
-        )
+        
         updateSelectizeInput(session, "treeNum2",
                              label = paste0("Select tree [", length(labels)," trees]"),
                              choices = labels
@@ -271,11 +272,18 @@ server <- function(input, output, session) {
         values$ret <- ret
         values$fnr <- input$fn
         values$quant <- input$quantile
-        values$datasetName <- input$file[['name']]
-        values$chosenTree <- NULL
+        values$datasetName <- "AML patient"
+        #values$chosenTree <- NULL
         values$confSliderArgs <- list("min"=input$gmin,
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
+        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        updateSelectizeInput(session, "treeNum",
+                             label = paste0("Select tree [", length(labels)," trees]"),
+                             choices = labels,
+                             selected=values$chosenTree
+        )
+        shinyjs::show('mainpanel')
     })
     
     # Run button is pressed
@@ -317,7 +325,7 @@ server <- function(input, output, session) {
                                      cells = numeric(),
                                      gamma = numeric())
             for(g in gamma_list){
-                incProgress(0.002, detail = paste("Calculating values of k for", g))
+                incProgress(0.002, detail = paste("Calculating values of for 𝛾 =", g))
                 phydose_ret <- phydose(
                     parse_data$tree, 
                     parse_data$fmatrices, 
@@ -347,12 +355,8 @@ server <- function(input, output, session) {
             )
             incProgress(0.2, detail = "Done!!")
         })
-        print("changing the tree nums 1")
         labels <- create_labels("Tree", length(ret$parse_data$trees))
-        updateSelectizeInput(session, "treeNum",
-                          label = paste0("Select tree [", length(labels)," trees]"),
-                          choices = labels
-        )
+        
         updateSelectizeInput(session, "treeNum2",
                           label = paste0("Select tree [", length(labels)," trees]"),
                           choices = labels
@@ -362,10 +366,17 @@ server <- function(input, output, session) {
         values$fnr <- input$fn
         values$quant <- input$quantile
         values$datasetName <- input$file[['name']]
-        values$chosenTree <- NULL
+        #values$chosenTree <- NULL
         values$confSliderArgs <- list("min"=input$gmin,
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
+        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        updateSelectizeInput(session, "treeNum",
+                             label = paste0("Select tree [", length(labels)," trees]"),
+                             choices = labels,
+                             selected=values$chosenTree
+        )
+        shinyjs::show('mainpanel')
     })
     
     # render tree 1
@@ -379,6 +390,9 @@ server <- function(input, output, session) {
                                        input$showU1,
                                        input$showF1
         )
+        if (is.null(values$d_graph1)){
+            return(NULL)
+        }
         render_graph(values$d_graph1, layout="tree")
     })
     
@@ -393,6 +407,9 @@ server <- function(input, output, session) {
                                        input$showU2,
                                        input$showF2
                                        )
+        if (is.null(values$d_graph2)){
+            return(NULL)
+        }
         render_graph(values$d_graph2, layout="tree")
     })
     
@@ -509,13 +526,50 @@ server <- function(input, output, session) {
         return(paste0("Tree #", q_t$tree, " with quantile = ", trunc_q))
     })
     
-    observeEvent(input$downloadTree1,{
-        dot_version <- values$d_graph1 %>% add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
-        export_graph(dot_version,file_name = "tree.pdf", file_type = "PDF")
-    })
+    # observeEvent(input$downloadTree1,{
+    #     req(values$d_graph1)
+    #     if (is.null(values$d_graph1)){
+    #         return()
+    #     }
+    #     dot_version <- values$d_graph1 %>% add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
+    #     export_graph(dot_version,file_name = "tree.svg", file_type = "svg")
+    # })
     
-    observeEvent(input$downloadTree2,{
-        dot_version <- values$d_graph2 %>% add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
-        export_graph(dot_version,file_name = "tree.pdf", file_type = "PDF")
-    })
+    # observeEvent(input$downloadTree2,{
+    #     if (is.null(values$d_graph2)){
+    #         return()
+    #     }
+    #     dot_version <- values$d_graph2 %>% add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
+    #     export_graph(dot_version,file_name = "tree.png", file_type = "png")
+    # })
+    
+    output$downloadTree2 <- downloadHandler(
+        filename = function(){
+            paste0(values$datasetName, "_", "tree", input$treeNum2, ".pdf")
+        },
+        content = function(file){
+            if (is.null(values$d_graph2)){
+                return()
+            }
+            dot_version <- values$d_graph2 %>% 
+                add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
+            export_graph(dot_version,file_name = file, file_type = "pdf")
+        },
+        contentType="application/pdf"
+    )
+    
+    output$downloadTree1 <- downloadHandler(
+        filename = function(){
+            paste0(values$datasetName, "_", "tree", input$treeNum, ".pdf")
+        },
+        content = function(file){
+            if (is.null(values$d_graph1)){
+                return()
+            }
+            dot_version <- values$d_graph1 %>% 
+                add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
+            export_graph(dot_version,file_name = file, file_type = "pdf")
+        },
+        contentType="application/pdf"
+    )
 }
