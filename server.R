@@ -35,15 +35,17 @@ server <- function(input, output, session) {
     })
     
     observeEvent(input$clearChosenTree,{
-        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenTree <- get_max_tree(values$ret$per_tree_k, input$gamma)
+        values$chosenSample <- get_best_sample(values$ret$per_tree_k, input$gamma)
+        updateSelectizeInput(session, "treeNum", selected=as.numeric(values$chosenTree))
     })
     
     observeEvent(event_data(event="plotly_click", source="mysource"),{
         req(values$ret)
         d <- event_data(event="plotly_click", source="mysource")
         values$chosenTree <- as.numeric(d$key)
-        updateSelectizeInput(session, "treeNum", selected=as.numeric(d$key)
-        )
+        values$chosenSample <- as.numeric(d$customdata)
+        updateSelectizeInput(session, "treeNum", selected=as.numeric(d$key))
     })
     
     # observeEvent(values$ret,{
@@ -55,7 +57,7 @@ server <- function(input, output, session) {
     #     )
     #     updateSelectizeInput(session, "treeNum2",
     #                       label = paste0("Select tree [", length(labels)," trees]"),
-    #                       choices = labels
+    #                       c hoices = labels
     #     )
     # })
     
@@ -151,60 +153,89 @@ server <- function(input, output, session) {
         )
     })
     
-    # ALL patient 1 is chosen
-    observeEvent(input$runALL, {
-        withProgress(message = 'Showing ALL patient', value = 50, {
-        load(file="data/ALLphydose.rda")
-        ret <- list("my_glist"=ALLphydose$gamma_list,
-                           "my_clist"=ALLphydose$cells,
-                           "per_tree_k"=ALLphydose$per_tree_k,
-                           "parse_data"=ALLphydose$parse_data,
-                           "all_dff"=ALLphydose$all_dff
-        )
-        labels <- create_labels("Tree", length(ret$parse_data$trees))
-        updateSelectizeInput(session, "treeNum",
-                          label = paste0("Select tree [", length(labels)," trees]"),
-                          choices = labels
-        )
-        updateSelectizeInput(session, "treeNum2",
-                          label = paste0("Select tree [", length(labels)," trees]"),
-                          choices = labels
-        )
-        values$ret <- ret
-        values$fnr <- 0.2
-        values$quant <- 1
-        values$datasetName <- "ALL patient"
-        values$confSliderArgs <- list("min"=0,"max"=0.99,"res"=0.01)
-        values$chosenTree <- NULL
+    # Simulation dataset 1 is chosen
+    observeEvent(input$runSim1, {
+        ret <- NULL
+        withProgress(message = 'Running PhyDOSE', value = 0, {
+            # 1. file is parsed to get trees, frequency matrix, and u matrix
+            incProgress(0.1, detail = "Parsing file...")
+            parse_data <- multsample
+            # 2. using output from file parse, call the getdff to get dff
+            incProgress(0.1, detail = "Finding distinguishing features...")
+            all_dff <- generateDistFeat(parse_data$trees)
+            # 3. after getting the dff, call phydose multiple times to get data for plot
+            incProgress(0.2, detail = "Calculating values of k...")
+            gamma_list <- seq(input$gmin, input$gmax, by=input$gresolution)
+            if ( tail(gamma_list, 1) != input$gmax ) {
+                gamma_list <- c(gamma_list, input$gmax)
+            } 
+            cells <- numeric(length(gamma_list))
+            index <- 1
+            u_list <- input$u
+            per_tree_k <- data.frame(tree = character(), 
+                                     tree_id = numeric(), 
+                                     sample = numeric(), 
+                                     cells = numeric(),
+                                     gamma = numeric())
+            for(g in gamma_list){
+                incProgress(0.002, detail = paste("Calculating values for 𝛾 =", g))
+                phydose_ret <- phydose(
+                    parse_data$tree, 
+                    parse_data$fmatrices, 
+                    distFeat=all_dff,
+                    gamma = g,
+                    fnr = input$fn,
+                    kstar_quant = input$percentile
+                )
+                mydata <- phydose_ret$kTdata
+                mydata[["gamma"]] <- g
+                per_tree_k <- rbind(per_tree_k, mydata)
+                
+                cells[index] = phydose_ret$kstar
+                index = index + 1
+            }
+            
+            # 4. update UI
+            incProgress(0.1, detail = "Updating UI...")
+            # update the selection of trees
+            
+            incProgress(0.2, detail = "Done!")
+            ret <- list("my_glist"=gamma_list,
+                        "my_clist"=cells,
+                        "per_tree_k"=per_tree_k,
+                        "parse_data"=parse_data,
+                        "all_dff"=all_dff
+            )
+            incProgress(0.2, detail = "Done!!")
         })
+        
+        labels <- create_labels("Tree", length(ret$parse_data$trees))
+        
+        updateSelectizeInput(session, "treeNum2",
+                             label = paste0("Select tree [", length(labels)," trees]"),
+                             choices = labels
+        )          
+        
+        values$ret <- ret
+        values$fnr <- input$fn
+        values$quant <- input$quantile
+        values$datasetName <- "AML patient"
+        #values$chosenTree <- NULL
+        values$confSliderArgs <- list("min"=input$gmin,
+                                      "max"=input$gmax,
+                                      "res"=min(input$gresolution,input$gmax-input$gmin))
+        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
+        updateSelectizeInput(session, "treeNum",
+                             label = paste0("Select tree [", length(labels)," trees]"),
+                             choices = labels,
+                             selected=values$chosenTree
+        )
+        shinyjs::show('mainpanel')
     })
     
     # AML patient 1 is chosen
     observeEvent(input$runAML, {
-        # withProgress(message = 'Showing AML patient', value = 50, {
-        # load(file="data/AML38phydose.rda")
-        # ret <- list("my_glist"=AML38phydose$my_glist,
-        #                    "my_clist"=AML38phydose$my_clist,
-        #                    "per_tree_k"=AML38phydose$per_tree_k,
-        #                    "parse_data"=AML38phydose$parse_data,
-        #                    "all_dff"=AML38phydose$all_dff
-        # )
-        # labels <- create_labels("Tree", length(ret$parse_data$trees))
-        # updateSelectizeInput(session, "treeNum",
-        #                   label = paste0("Select tree [", length(labels)," trees]"),
-        #                   choices = labels
-        # )
-        # updateSelectizeInput(session, "treeNum2",
-        #                   label = paste0("Select tree [", length(labels)," trees]"),
-        #                   choices = labels
-        # )        
-        # values$ret <- ret
-        # values$fnr <- 0.2
-        # values$quant <-1
-        # values$datasetName <- "AML patient"
-        # values$confSliderArgs <- list("min"=0,"max"=0.99,"res"=0.01)
-        # values$chosenTree <- NULL
-        # })
         ret <- NULL
         withProgress(message = 'Running PhyDOSE', value = 0, {
             # 1. file is parsed to get trees, frequency matrix, and u matrix
@@ -278,6 +309,7 @@ server <- function(input, output, session) {
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
         values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
         updateSelectizeInput(session, "treeNum",
                              label = paste0("Select tree [", length(labels)," trees]"),
                              choices = labels,
@@ -292,7 +324,7 @@ server <- function(input, output, session) {
         
         if (is.null(input$file)){
             showModal(modalDialog(
-                "Please upload file or run an example dataset",
+                "Please upload a file or run an example dataset",
                 easyClose = TRUE
             ))
             return(NULL)
@@ -371,6 +403,7 @@ server <- function(input, output, session) {
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
         values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
         updateSelectizeInput(session, "treeNum",
                              label = paste0("Select tree [", length(labels)," trees]"),
                              choices = labels,
@@ -388,7 +421,8 @@ server <- function(input, output, session) {
                                        input$dfNum, 
                                        input$featuretteNum,
                                        input$showU1,
-                                       input$showF1
+                                       input$showF1,
+                                       values$chosenSample
         )
         if (is.null(values$d_graph1)){
             return(NULL)
@@ -405,7 +439,8 @@ server <- function(input, output, session) {
                                        input$dfNum2, 
                                        input$featuretteNum2,
                                        input$showU2,
-                                       input$showF2
+                                       input$showF2,
+                                       values$chosenSample
                                        )
         if (is.null(values$d_graph2)){
             return(NULL)
@@ -421,7 +456,8 @@ server <- function(input, output, session) {
             cells_list=ret$my_clist, 
             per_tree_k=ret$per_tree_k, 
             chosen_tree=values$chosenTree, 
-            chosen_gamma=input$gamma)
+            chosen_gamma=input$gamma,
+            chosen_sample=values$chosenSample)
         ggplotly(p, tooltip=c("text","x","y"))
     })
     
@@ -431,7 +467,8 @@ server <- function(input, output, session) {
         p <- create_box_jitter(
             per_tree_k=ret$per_tree_k,
             chosen_tree=values$chosenTree,
-            chosen_gamma=input$gamma
+            chosen_gamma=input$gamma,
+            chosen_sample=values$chosenSample
             )
         ggplotly(p, source="mysource")
     })
@@ -521,27 +558,10 @@ server <- function(input, output, session) {
     
     output$box_title <- renderText({
         req(values$ret)
-        q_t <- get_quantile_and_tree(values$ret$per_tree_k, values$chosenTree, input$gamma)
+        q_t <- get_quantile_and_tree(values$ret$per_tree_k, values$chosenTree, input$gamma, values$chosenSample)
         trunc_q <- sprintf("%.3f", q_t$quantile)
         return(paste0("Tree #", q_t$tree, " with quantile = ", trunc_q))
     })
-    
-    # observeEvent(input$downloadTree1,{
-    #     req(values$d_graph1)
-    #     if (is.null(values$d_graph1)){
-    #         return()
-    #     }
-    #     dot_version <- values$d_graph1 %>% add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
-    #     export_graph(dot_version,file_name = "tree.svg", file_type = "svg")
-    # })
-    
-    # observeEvent(input$downloadTree2,{
-    #     if (is.null(values$d_graph2)){
-    #         return()
-    #     }
-    #     dot_version <- values$d_graph2 %>% add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
-    #     export_graph(dot_version,file_name = "tree.png", file_type = "png")
-    # })
     
     output$downloadTree2 <- downloadHandler(
         filename = function(){
@@ -571,5 +591,23 @@ server <- function(input, output, session) {
             export_graph(dot_version,file_name = file, file_type = "pdf")
         },
         contentType="application/pdf"
+    )
+    
+    output$downloadAML <- downloadHandler(
+        filename = function(){
+            "AML38.txt"
+        },
+        content = function(file){
+            file.copy(system.file("extdata", "AML38.txt", package = "phydoser"), file)
+        },
+    )
+    
+    output$downloadSim1 <- downloadHandler(
+        filename = function(){
+            "multsample.txt"
+        },
+        content = function(file){
+            file.copy(system.file("extdata", "multsample.txt", package = "phydoser"), file)
+        },
     )
 }

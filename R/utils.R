@@ -9,11 +9,26 @@ create_labels <- function(prefix, num_elems){
     return(labels)
 }
 
-create_step_graph <- function(gamma_list, cells_list, per_tree_k, chosen_tree, chosen_gamma){
+get_best_sample <- function(per_tree_k, chosen_gamma, kstar_quant=1){
+    
+    filtered_k <- filter(per_tree_k, gamma >= chosen_gamma-0.001 & gamma <= chosen_gamma+0.001)
+    
+    phyDOSE <- filtered_k %>%dplyr:: group_by(sample) %>%
+        dplyr::summarize(cells = quantile(cells, kstar_quant)) %>%
+        dplyr::ungroup() %>%
+        dplyr::summarize(kstar = min(cells)) %>% 
+        dplyr::ungroup()
+    sample <- head(filter(filtered_k, cells == phyDOSE$kstar),1)$sample
+    return(sample)
+}
+
+create_step_graph <- function(gamma_list, cells_list, per_tree_k, chosen_tree, chosen_gamma, chosen_sample){
+    
     mydata <- data.frame(gamma = gamma_list, cells = cells_list)
     
     if (!is.null(chosen_tree)){
-        mydata <- filter(per_tree_k, tree_id == chosen_tree)
+        best_sample <- get_best_sample(per_tree_k, chosen_gamma)
+        mydata <- filter(per_tree_k, tree_id == chosen_tree & sample == chosen_sample)
     }
     gamma_min <-filter(mydata, gamma >= chosen_gamma) %>% top_n(1, -gamma)
     label_text <- c()
@@ -35,22 +50,24 @@ create_step_graph <- function(gamma_list, cells_list, per_tree_k, chosen_tree, c
     return(p)
 }
 
-create_box_jitter <- function(per_tree_k, chosen_tree, chosen_gamma){
+create_box_jitter <- function(per_tree_k, chosen_tree, chosen_gamma, chosen_sample){
     max_cells <- max(per_tree_k$cells)
     filtered_k <- filter(per_tree_k, gamma >= chosen_gamma-0.001 & gamma <= chosen_gamma+0.001)
-    p <- ggplot(filtered_k, aes(x=sample, y=cells,key=tree_id))+
+    p <- ggplot(filtered_k, aes(x=sample, y=cells, key=tree_id, customdata=sample))+
         geom_boxplot() +
         geom_jitter(position=position_jitter(width=0.1,height=0), fill='gray',alpha=0.5, shape=21) +
-        scale_x_discrete(limits=c("1"), label=c("1"))+
+        scale_x_discrete(limits=(1:length(unique(per_tree_k$sample))))+
         scale_y_continuous(limits=c(0,max_cells+1))+
         ylab("number of cells to sequence")+
         xlab("biopsy")
     if (!is.null(chosen_tree)){
-        highlighted_k <- head(filter(filtered_k, tree_id == as.numeric(chosen_tree)),1)
+        #best_sample <- get_best_sample(per_tree_k, chosen_gamma)
+        highlighted_k <- head(filter(filtered_k, tree_id == as.numeric(chosen_tree), sample == chosen_sample),1)
         p <- p + geom_point(highlighted_k, mapping=aes(), color="red", size=3)
     }
     else{
-        max_cells_filtered <- max(filtered_k$cells) # get the max number of cells
+        best_sample <- get_best_sample(per_tree_k, chosen_gamma)
+        max_cells_filtered <- max(filter(filtered_k, sample == best_sample)$cells) # get the max number of cells given sample
         max_tree <- head(filter(filtered_k, cells == max_cells_filtered),1)
         p <- p + geom_point(max_tree, mapping=aes(), color="red", size=3 )
     }
@@ -58,17 +75,17 @@ create_box_jitter <- function(per_tree_k, chosen_tree, chosen_gamma){
 }
 
 get_max_tree <- function(per_tree_k, chosen_gamma){
-    max_cells <- max(per_tree_k$cells)
+    best_sample <- get_best_sample(per_tree_k, chosen_gamma)
     filtered_k <- filter(per_tree_k, gamma >= chosen_gamma-0.001 & gamma <= chosen_gamma+0.001)
-    max_cells_filtered <- max(filtered_k$cells) # get the max number of cells
+    max_cells_filtered <- max(filter(filtered_k, sample == best_sample)$cells) # get the max number of cells
     max_tree <- head(filter(filtered_k, cells == max_cells_filtered),1)$tree_id
     return(max_tree)
 }
 
 # returns the quantile of the chosen tree for the chosen gamma
-get_quantile_and_tree <- function(per_tree_k, chosen_tree, chosen_gamma){
-    
-    filtered_k <- filter(per_tree_k, gamma >= chosen_gamma-0.001 & gamma <= chosen_gamma+0.001)
+get_quantile_and_tree <- function(per_tree_k, chosen_tree, chosen_gamma, chosen_sample = 1){
+    # need to consider sample as well
+    filtered_k <- filter(per_tree_k, gamma >= chosen_gamma-0.001 & gamma <= chosen_gamma+0.001, sample == chosen_sample)
     if (is.null(chosen_tree)){
         max_cells_filtered <- max(filtered_k$cells) # get the max number of cells
         max_tree <- head(filter(filtered_k, cells == max_cells_filtered),1)
@@ -79,7 +96,8 @@ get_quantile_and_tree <- function(per_tree_k, chosen_tree, chosen_gamma){
     return(list(tree=chosen_tree,quantile=mean(filtered_k$cells <= num_cells)))
 }
 
-get_diagrammer_tree <- function(parse_data, all_dff, tree_num, df_num, featurette_num, showu, showf){
+get_diagrammer_tree <- function(parse_data, all_dff, tree_num, df_num, featurette_num, 
+                                showu, showf, chosen_sample){
     if (tree_num == "" || df_num == "" || featurette_num == ""){
         return (NULL)
     }
@@ -92,11 +110,11 @@ get_diagrammer_tree <- function(parse_data, all_dff, tree_num, df_num, featurett
             f <- parse_data$fmatrices
         }
         else{
-            f <- parse_data$fmatrices[[as.numeric(tree_num)]]
+            f <- parse_data$fmatrices[[as.numeric(tree_num)]][as.numeric(chosen_sample),]
         }
     }
     if (showu){
-        u <- parse_data$u_list[[as.numeric(tree_num)]]
+        u <- parse_data$u_list[[as.numeric(tree_num)]][as.numeric(chosen_sample),]
     }
     d_graph <- NULL
     # case for show all featurettes

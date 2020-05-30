@@ -25,15 +25,24 @@ ui <- dashboardPage( skin='black',
                      icon = icon("table"),
                      #actionButton("runSim","Simulation dataset 1",width='auto'),
                      #actionButton("runALL","ALL patient"),
-                     actionButton("runAML","AML patient 38", width='85%')
+                     menuItem("AML Patient 38",
+                              actionButton("runAML","Run PhyDOSE", style="margin: 6px 5px 6px 0px; width:90%"),
+                              downloadButton("downloadAML", "Download dataset", style="width:90%")
+                              ),
+                     menuItem("Simulation Dataset 1",
+                              actionButton("runSim1","Run PhyDOSE", 
+                                           style="margin: 6px 5px 6px 0px; width:90%"),
+                              downloadButton("downloadSim1", "Download dataset", style="width:90%")
                      )
+                     )
+            
         )
     ),
     
     dashboardBody(
       useShinyjs(),
       tabsetPanel(
-        tabPanel("User Interface",
+        tabPanel("Main",
                  shinyjs::hidden(div(id="mainpanel",
                                      fluidRow(
                                        column(12, align="center",
