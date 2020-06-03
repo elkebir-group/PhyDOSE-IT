@@ -4,7 +4,8 @@ server <- function(input, output, session) {
     
     # Reactive values ----------------------------------------------------------
     values <- reactiveValues(
-        chosenTree = NULL,
+        chosenTree = NULL, # this is changed by tree vis, reset button, and initial run, and is read by the graphs
+        tree1Num = NULL, # this is changed by the graphs, reset button, and initial run, and is read by tree 1
         chosenSample = NULL,
         parse_data = NULL,
         all_dff = NULL,
@@ -26,131 +27,26 @@ server <- function(input, output, session) {
     )
     
     # Observe if specific tree is chosen to be displayed -----------------------
-    observeEvent(input$plotTree1,{
-        values$chosenTree <- as.numeric(input$treeNum)
-    })
-    
-    observeEvent(input$plotTree2,{
-        values$chosenTree <- as.numeric(input$treeNum2)
-    })
-    
     observeEvent(input$clearChosenTree,{
-        values$chosenTree <- get_max_tree(values$ret$per_tree_k, input$gamma)
+        values$tree1Num <- get_max_tree(values$ret$per_tree_k, input$gamma)
+        values$chosenTree <- values$tree1Num
         values$chosenSample <- get_best_sample(values$ret$per_tree_k, input$gamma)
-        updateSelectizeInput(session, "treeNum", selected=as.numeric(values$chosenTree))
     })
     
     observeEvent(event_data(event="plotly_click", source="mysource"),{
         req(values$ret)
         d <- event_data(event="plotly_click", source="mysource")
-        values$chosenTree <- as.numeric(d$key)
+        values$tree1Num <- as.numeric(d$key)
+        values$chosenTree <- values$tree1Num
         values$chosenSample <- as.numeric(d$customdata)
-        updateSelectizeInput(session, "treeNum", selected=as.numeric(d$key))
     })
     
-    # observeEvent(values$ret,{
-    #     req(values$ret)
-    #     labels <- create_labels("Tree", length(values$ret$parse_data$trees))
-    #     updateSelectizeInput(session, "treeNum",
-    #                       label = paste0("Select tree [", length(labels)," trees]"),
-    #                       choices = labels
-    #     )
-    #     updateSelectizeInput(session, "treeNum2",
-    #                       label = paste0("Select tree [", length(labels)," trees]"),
-    #                       c hoices = labels
-    #     )
-    # })
-    
-    observeEvent({
-        input$treeNum
-        values$ret
-        }, {
-        if (input$treeNum == ""){
-            return (NULL)
-        }
-            treeNum <- input$treeNum
-            if (as.numeric(input$treeNum) > length(values$ret$all_dff)){
-                treeNum <- 1
-            }
-        labels <- create_labels("DF", length(values$ret$all_dff[[as.numeric(treeNum)]]))
-        updateSelectInput(session, "dfNum",
-                          label = "Select distinguishing feature",
-                          choices = labels
-        )
+    observeEvent(input$plotTree2, {
+        values$chosenTree <- treeToggles2$treeNum()
     })
-    
-    observeEvent({
-        input$treeNum2
-        values$ret
-        }, {
-        if (input$treeNum2 == ""){
-            return (NULL)
-        }
-            treeNum2 <- input$treeNum2
-            if (as.numeric(input$treeNum2) > length(values$ret$all_dff)){
-                treeNum2 <- 1
-            } 
-        labels <- create_labels("DF", length(values$ret$all_dff[[as.numeric(treeNum2)]]))
-        updateSelectInput(session, "dfNum2",
-                          label = "Select distinguishing feature",
-                          choices = labels
-        )
-    })
-    
-    observeEvent({
-        input$treeNum
-        input$dfNum
-        values$ret
-        },{
-        if (input$treeNum == "" || input$dfNum == ""){
-            return (NULL)
-        }
-            treeNum <- input$treeNum
-            if (as.numeric(input$treeNum) > length(values$ret$all_dff)){
-                treeNum <- 1
-            }
-            dfNum <- input$dfNum
-            if (as.numeric(input$dfNum) > length(values$ret$all_dff[[as.numeric(treeNum)]])){
-                dfNum <- 1
-            }
-        labels <- create_labels(
-            "Featurette", 
-            length(values$ret$all_dff[[as.numeric(treeNum)]][[as.numeric(dfNum)]])
-            )
-        labels[["Show all"]] <- 0
-        labels[["Show none"]] <- -1
-        updateSelectInput(session, "featuretteNum",
-                          label = "Select featurette",
-                          choices = labels
-        )
-    })
-    
-    observeEvent(
-        {input$dfNum2
-            input$treeNum2
-            values$ret
-            },{
-        if (input$treeNum2 == "" || input$dfNum2 == ""){
-            return (NULL)
-        }
-                treeNum2 <- input$treeNum2
-                if (as.numeric(input$treeNum2) > length(values$ret$all_dff)){
-                    treeNum2 <- 1
-                }
-                dfNum2 <- input$dfNum2
-                if (as.numeric(input$dfNum2) > length(values$ret$all_dff[[as.numeric(treeNum2)]])){
-                    dfNum2 <- 1
-                }
-        labels <- create_labels(
-            "Featurette", 
-            length(values$ret$all_dff[[as.numeric(treeNum2)]][[as.numeric(dfNum2)]])
-        )
-        labels[["Show all"]] <- 0
-        labels[["Show none"]] <- -1
-        updateSelectInput(session, "featuretteNum2",
-                          label = "Select featurette",
-                          choices = labels
-        )
+    observeEvent(input$plotTree1, {
+        values$chosenTree <- treeToggles$treeNum()
+        values$tree1Num <- values$chosenTree
     })
     
     # Simulation dataset 1 is chosen
@@ -224,7 +120,8 @@ server <- function(input, output, session) {
         values$confSliderArgs <- list("min"=input$gmin,
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
-        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$tree1Num <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenTree <- values$tree1Num
         values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
         updateSelectizeInput(session, "treeNum",
                              label = paste0("Select tree [", length(labels)," trees]"),
@@ -308,7 +205,8 @@ server <- function(input, output, session) {
         values$confSliderArgs <- list("min"=input$gmin,
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
-        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$tree1Num <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenTree <- values$tree1Num
         values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
         updateSelectizeInput(session, "treeNum",
                              label = paste0("Select tree [", length(labels)," trees]"),
@@ -402,7 +300,8 @@ server <- function(input, output, session) {
         values$confSliderArgs <- list("min"=input$gmin,
                                       "max"=input$gmax,
                                       "res"=min(input$gresolution,input$gmax-input$gmin))
-        values$chosenTree <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$tree1Num <- get_max_tree(ret$per_tree_k, input$gamma)
+        values$chosenTree <- values$tree1Num
         values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
         updateSelectizeInput(session, "treeNum",
                              label = paste0("Select tree [", length(labels)," trees]"),
@@ -410,42 +309,6 @@ server <- function(input, output, session) {
                              selected=values$chosenTree
         )
         shinyjs::show('mainpanel')
-    })
-    
-    # render tree 1
-    output$graphV <- renderGrViz({ 
-        req(values$ret)
-        values$d_graph1 <- get_diagrammer_tree(values$ret$parse_data, 
-                                       values$ret$all_dff, 
-                                       input$treeNum, 
-                                       input$dfNum, 
-                                       input$featuretteNum,
-                                       input$showU1,
-                                       input$showF1,
-                                       values$chosenSample
-        )
-        if (is.null(values$d_graph1)){
-            return(NULL)
-        }
-        render_graph(values$d_graph1, layout="tree")
-    })
-    
-    # render tree 2
-    output$graphV2 <- renderGrViz({ 
-        req(values$ret)
-        values$d_graph2 <- get_diagrammer_tree(values$ret$parse_data, 
-                                       values$ret$all_dff, 
-                                       input$treeNum2, 
-                                       input$dfNum2, 
-                                       input$featuretteNum2,
-                                       input$showU2,
-                                       input$showF2,
-                                       values$chosenSample
-                                       )
-        if (is.null(values$d_graph2)){
-            return(NULL)
-        }
-        render_graph(values$d_graph2, layout="tree")
     })
     
     output$kvscl <- renderPlotly({
@@ -488,26 +351,6 @@ server <- function(input, output, session) {
         return(paste0(gamma_min$cells[1], " cells required to sequence with confidence level 𝛾 = ", input$gamma))
     })
     
-    output$treeNumDetail <- renderText({
-        treeShown <- "-"
-        if (!is.null(values$chosenTree)){
-            treeShown <- values$chosenTree
-        }
-        return(paste0(
-            "Tree shown: ", treeShown
-        ))
-    })
-    
-    output$sampleNumDetail <- renderText({
-        sampleShown <- "-"
-        if (!is.null(values$chosenSample)){
-            sampleShown <- values$chosenSample
-        }
-        return(paste0(
-            "Biopsy shown: ", sampleShown
-        ))
-    })
-    
     observe({
         # Control the value, min, max, and step.
         # Step size is 2 when input value is even; 1 when value is odd.
@@ -526,72 +369,12 @@ server <- function(input, output, session) {
         updateSliderInput(session, "gmax", min = input$gmin+0.01)
     })
     
-    output$detTable <- renderTable({
-        if (is.null(values$fnr)){
-            return(NULL)
-        }
-        sampleShown <- "-"
-        
-        if (!is.null(values$chosenSample)){
-            sampleShown <- as.integer(values$chosenSample)
-        }
-        treeShown <- "-"
-        if (!is.null(values$chosenTree)){
-            treeShown <- as.integer(values$chosenTree)
-        }
-        tabl <- data.frame(
-            "tree"=treeShown,
-            "biopsy"=sampleShown,
-            "fnr"=values$fnr,
-            "quant"=values$quant,
-            "dataset"=values$datasetName
-            )
-    }, width='auto')
-    
-    
-    output$fTable <- renderTable({
-        if (is.null(values$ret)){
-            return(NULL)
-        }
-        return(values$ret$parse_data$fmatrices[[1]])
-    })
-    
     output$box_title <- renderText({
         req(values$ret)
         q_t <- get_quantile_and_tree(values$ret$per_tree_k, values$chosenTree, input$gamma, values$chosenSample)
         trunc_q <- sprintf("%.3f", q_t$quantile)
         return(paste0("Tree #", q_t$tree, " with quantile = ", trunc_q))
     })
-    
-    output$downloadTree2 <- downloadHandler(
-        filename = function(){
-            paste0(values$datasetName, "_", "tree", input$treeNum2, ".pdf")
-        },
-        content = function(file){
-            if (is.null(values$d_graph2)){
-                return()
-            }
-            dot_version <- values$d_graph2 %>% 
-                add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
-            export_graph(dot_version,file_name = file, file_type = "pdf")
-        },
-        contentType="application/pdf"
-    )
-    
-    output$downloadTree1 <- downloadHandler(
-        filename = function(){
-            paste0(values$datasetName, "_", "tree", input$treeNum, ".pdf")
-        },
-        content = function(file){
-            if (is.null(values$d_graph1)){
-                return()
-            }
-            dot_version <- values$d_graph1 %>% 
-                add_global_graph_attrs(attr="layout", value="dot", attr_type = "graph")
-            export_graph(dot_version,file_name = file, file_type = "pdf")
-        },
-        contentType="application/pdf"
-    )
     
     output$downloadAML <- downloadHandler(
         filename = function(){
@@ -610,4 +393,29 @@ server <- function(input, output, session) {
             file.copy(system.file("extdata", "multsample.txt", package = "phydoser"), file)
         },
     )
+    
+    # Compare and Visualize Trees ----------------------------------------------
+    values$d_graph1 <- callModule(treeVis,
+                                  "tree1",
+                                  reactive(values$ret$parse_data),
+                                  reactive(values$ret$all_dff),
+                                  treeToggles,
+                                  reactive(values$chosenSample)
+    )
+    
+    treeToggles <- callModule(treeVisToggles, "tree1input", reactive(values$ret), 
+                              d_graph=values$d_graph1, dtn=values$datasetName,
+                              chosenTree=reactive(values$tree1Num))
+    
+    values$d_graph2 <- callModule(treeVis,
+                                  "tree2",
+                                  reactive(values$ret$parse_data),
+                                  reactive(values$ret$all_dff),
+                                  treeToggles2,
+                                  reactive(values$chosenSample)
+    )
+    
+    treeToggles2 <- callModule(treeVisToggles, "tree2input", reactive(values$ret), 
+                              d_graph=values$d_graph2, dtn=values$datasetName,
+                              chosenTree=reactive(NULL))
 }
