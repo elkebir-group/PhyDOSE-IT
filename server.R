@@ -15,8 +15,11 @@ server <- function(input, output, session) {
         quant=NULL,
         datasetName=NULL,
         d_graph1=NULL,
-        d_graph2=NULL
+        d_graph2=NULL,
+        trig = 0 #triggers the run button to execute every time it is clicked
     )
+    
+    runVals <- reactiveValues()
     
     phydoseData <- reactiveValues(
         gamma_list = NULL,
@@ -28,13 +31,19 @@ server <- function(input, output, session) {
     
     # Observe if specific tree is chosen to be displayed -----------------------
     observeEvent(input$clearChosenTree,{
-        values$tree1Num <- get_max_tree(values$ret$per_tree_k, input$gamma)
+        req(runVals$ret())
+        ret <- runVals$ret()
+        updateSliderInput(session, "gamma",
+                          value = values$confSliderArgs$max
+        )
+        values$tree1Num <- get_max_tree(ret$per_tree_k, values$confSliderArgs$max)
         values$chosenTree <- values$tree1Num
-        values$chosenSample <- get_best_sample(values$ret$per_tree_k, input$gamma)
+        values$chosenSample <- get_best_sample(ret$per_tree_k, values$confSliderArgs$max)
     })
     
     observeEvent(event_data(event="plotly_click", source="mysource"),{
-        req(values$ret)
+        req(runVals$ret())
+        ret <- runVals$ret()
         d <- event_data(event="plotly_click", source="mysource")
         values$tree1Num <- as.numeric(d$key)
         values$chosenTree <- values$tree1Num
@@ -49,271 +58,11 @@ server <- function(input, output, session) {
         values$tree1Num <- values$chosenTree
     })
     
-    # Simulation dataset 1 is chosen
-    observeEvent(input$runSim1, {
-        ret <- NULL
-        withProgress(message = 'Running PhyDOSE', value = 0, {
-            # 1. file is parsed to get trees, frequency matrix, and u matrix
-            incProgress(0.1, detail = "Parsing file...")
-            parse_data <- multsample
-            # 2. using output from file parse, call the getdff to get dff
-            incProgress(0.1, detail = "Finding distinguishing features...")
-            all_dff <- generateDistFeat(parse_data$trees)
-            # 3. after getting the dff, call phydose multiple times to get data for plot
-            incProgress(0.2, detail = "Calculating values of k...")
-            gamma_list <- seq(input$gmin, input$gmax, by=input$gresolution)
-            if ( tail(gamma_list, 1) != input$gmax ) {
-                gamma_list <- c(gamma_list, input$gmax)
-            } 
-            cells <- numeric(length(gamma_list))
-            index <- 1
-            u_list <- input$u
-            per_tree_k <- data.frame(tree = character(), 
-                                     tree_id = numeric(), 
-                                     sample = numeric(), 
-                                     cells = numeric(),
-                                     gamma = numeric())
-            for(g in gamma_list){
-                incProgress(0.002, detail = paste("Calculating values for 𝛾 =", g))
-                phydose_ret <- phydose(
-                    parse_data$tree, 
-                    parse_data$fmatrices, 
-                    distFeat=all_dff,
-                    gamma = g,
-                    fnr = input$fn,
-                    kstar_quant = input$percentile
-                )
-                mydata <- phydose_ret$kTdata
-                mydata[["gamma"]] <- g
-                per_tree_k <- rbind(per_tree_k, mydata)
-                
-                cells[index] = phydose_ret$kstar
-                index = index + 1
-            }
-            
-            # 4. update UI
-            incProgress(0.1, detail = "Updating UI...")
-            # update the selection of trees
-            
-            incProgress(0.2, detail = "Done!")
-            ret <- list("my_glist"=gamma_list,
-                        "my_clist"=cells,
-                        "per_tree_k"=per_tree_k,
-                        "parse_data"=parse_data,
-                        "all_dff"=all_dff
-            )
-            incProgress(0.2, detail = "Done!!")
-        })
-        
-        labels <- create_labels("Tree", length(ret$parse_data$trees))
-        
-        updateSelectizeInput(session, "treeNum2",
-                             label = paste0("Select tree [", length(labels)," trees]"),
-                             choices = labels
-        )          
-        
-        values$ret <- ret
-        values$fnr <- input$fn
-        values$quant <- input$quantile
-        values$datasetName <- "AML patient"
-        #values$chosenTree <- NULL
-        values$confSliderArgs <- list("min"=input$gmin,
-                                      "max"=input$gmax,
-                                      "res"=min(input$gresolution,input$gmax-input$gmin))
-        values$tree1Num <- get_max_tree(ret$per_tree_k, input$gamma)
-        values$chosenTree <- values$tree1Num
-        values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
-        updateSelectizeInput(session, "treeNum",
-                             label = paste0("Select tree [", length(labels)," trees]"),
-                             choices = labels,
-                             selected=values$chosenTree
-        )
-        shinyjs::show('mainpanel')
-    })
-    
-    # AML patient 1 is chosen
-    observeEvent(input$runAML, {
-        ret <- NULL
-        withProgress(message = 'Running PhyDOSE', value = 0, {
-            # 1. file is parsed to get trees, frequency matrix, and u matrix
-            incProgress(0.1, detail = "Parsing file...")
-            parse_data <- AML38
-            
-            #parse_data <- ALLPatient2
-            # 2. using output from file parse, call the getdff to get dff
-            incProgress(0.1, detail = "Finding distinguishing features...")
-            all_dff <- AML38DFF
-            #all_dff <- ALLPatient2DFF
-            # 3. after getting the dff, call phydose multiple times to get data for plot
-            incProgress(0.2, detail = "Calculating values of k...")
-            gamma_list <- seq(input$gmin, input$gmax, by=input$gresolution)
-            if ( tail(gamma_list, 1) != input$gmax ) {
-                gamma_list <- c(gamma_list, input$gmax)
-            } 
-            cells <- numeric(length(gamma_list))
-            index <- 1
-            u_list <- input$u
-            per_tree_k <- data.frame(tree = character(), 
-                                     tree_id = numeric(), 
-                                     sample = numeric(), 
-                                     cells = numeric(),
-                                     gamma = numeric())
-            for(g in gamma_list){
-                incProgress(0.002, detail = paste("Calculating values for 𝛾 =", g))
-                phydose_ret <- phydose(
-                    parse_data$tree, 
-                    parse_data$fmatrices, 
-                    distFeat=all_dff,
-                    gamma = g,
-                    fnr = input$fn,
-                    kstar_quant = input$percentile
-                )
-                mydata <- phydose_ret$kTdata
-                mydata[["gamma"]] <- g
-                per_tree_k <- rbind(per_tree_k, mydata)
-                
-                cells[index] = phydose_ret$kstar
-                index = index + 1
-            }
-            
-            # 4. update UI
-            incProgress(0.1, detail = "Updating UI...")
-            # update the selection of trees
-            
-            incProgress(0.2, detail = "Done!")
-            ret <- list("my_glist"=gamma_list,
-                        "my_clist"=cells,
-                        "per_tree_k"=per_tree_k,
-                        "parse_data"=parse_data,
-                        "all_dff"=all_dff
-            )
-            incProgress(0.2, detail = "Done!!")
-        })
-        
-        labels <- create_labels("Tree", length(ret$parse_data$trees))
-        
-        updateSelectizeInput(session, "treeNum2",
-                             label = paste0("Select tree [", length(labels)," trees]"),
-                             choices = labels
-        )          
-        
-        values$ret <- ret
-        values$fnr <- input$fn
-        values$quant <- input$quantile
-        values$datasetName <- "AML patient"
-        #values$chosenTree <- NULL
-        values$confSliderArgs <- list("min"=input$gmin,
-                                      "max"=input$gmax,
-                                      "res"=min(input$gresolution,input$gmax-input$gmin))
-        values$tree1Num <- get_max_tree(ret$per_tree_k, input$gamma)
-        values$chosenTree <- values$tree1Num
-        values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
-        updateSelectizeInput(session, "treeNum",
-                             label = paste0("Select tree [", length(labels)," trees]"),
-                             choices = labels,
-                             selected=values$chosenTree
-        )
-        shinyjs::show('mainpanel')
-    })
-    
-    # Run button is pressed
-    observeEvent(input$run, {
-        ret <- NULL
-        
-        if (is.null(input$file)){
-            showModal(modalDialog(
-                "Please upload a file or run an example dataset",
-                easyClose = TRUE
-            ))
-            return(NULL)
-        }
-        
-        
-        
-        withProgress(message = 'Running PhyDOSE', value = 0, {
-            # 1. file is parsed to get trees, frequency matrix, and u matrix
-            incProgress(0.1, detail = "Parsing file...")
-            parse_data <- ReadJoint(input$file[['datapath']])
-            
-            #parse_data <- ALLPatient2
-            # 2. using output from file parse, call the getdff to get dff
-            incProgress(0.1, detail = "Finding distinguishing features...")
-            all_dff <- generateDistFeat(parse_data$trees)
-            #all_dff <- ALLPatient2DFF
-            # 3. after getting the dff, call phydose multiple times to get data for plot
-            incProgress(0.2, detail = "Calculating values of k...")
-            gamma_list <- seq(input$gmin, input$gmax, by=input$gresolution)
-            if ( tail(gamma_list, 1) != input$gmax ) {
-                gamma_list <- c(gamma_list, input$gmax)
-            } 
-            cells <- numeric(length(gamma_list))
-            index <- 1
-            u_list <- input$u
-            per_tree_k <- data.frame(tree = character(), 
-                                     tree_id = numeric(), 
-                                     sample = numeric(), 
-                                     cells = numeric(),
-                                     gamma = numeric())
-            for(g in gamma_list){
-                incProgress(0.002, detail = paste("Calculating values of for 𝛾 =", g))
-                phydose_ret <- phydose(
-                    parse_data$tree, 
-                    parse_data$fmatrices, 
-                    distFeat=all_dff,
-                    gamma = g,
-                    fnr = input$fn,
-                    kstar_quant = input$percentile
-                )
-                mydata <- phydose_ret$kTdata
-                mydata[["gamma"]] <- g
-                per_tree_k <- rbind(per_tree_k, mydata)
-                
-                cells[index] = phydose_ret$kstar
-                index = index + 1
-            }
-            
-            # 4. update UI
-            incProgress(0.1, detail = "Updating UI...")
-            # update the selection of trees
-            
-            incProgress(0.2, detail = "Done!")
-            ret <- list("my_glist"=gamma_list,
-                        "my_clist"=cells,
-                        "per_tree_k"=per_tree_k,
-                        "parse_data"=parse_data,
-                        "all_dff"=all_dff
-            )
-            incProgress(0.2, detail = "Done!!")
-        })
-        labels <- create_labels("Tree", length(ret$parse_data$trees))
-        
-        updateSelectizeInput(session, "treeNum2",
-                          label = paste0("Select tree [", length(labels)," trees]"),
-                          choices = labels
-        )          
-        
-        values$ret <- ret
-        values$fnr <- input$fn
-        values$quant <- input$quantile
-        values$datasetName <- input$file[['name']]
-        #values$chosenTree <- NULL
-        values$confSliderArgs <- list("min"=input$gmin,
-                                      "max"=input$gmax,
-                                      "res"=min(input$gresolution,input$gmax-input$gmin))
-        values$tree1Num <- get_max_tree(ret$per_tree_k, input$gamma)
-        values$chosenTree <- values$tree1Num
-        values$chosenSample <- get_best_sample(ret$per_tree_k, input$gamma)
-        updateSelectizeInput(session, "treeNum",
-                             label = paste0("Select tree [", length(labels)," trees]"),
-                             choices = labels,
-                             selected=values$chosenTree
-        )
-        shinyjs::show('mainpanel')
-    })
+    # MAIN PLOT ----------------------------------------------------------------
     
     output$kvscl <- renderPlotly({
-        req(values$ret)
-        ret <- values$ret
+        req(runVals$ret())
+        ret <- runVals$ret()
         p <- create_step_graph(
             gamma_list=ret$my_glist, 
             cells_list=ret$my_clist, 
@@ -324,9 +73,26 @@ server <- function(input, output, session) {
         ggplotly(p, tooltip=c("text","x","y"))
     })
     
+    output$num_cells <- renderText({
+      req(runVals$ret())
+      ret <- runVals$ret()
+      gamma_list <- ret$my_glist
+      cells_list <- ret$my_clist
+      mydata <- data.frame(gamma = gamma_list, cells = cells_list)
+      
+      if (!is.null(values$chosenTree)){
+        mydata <- filter(ret$per_tree_k, tree_id == as.numeric(values$chosenTree))
+      }
+      
+      gamma_min <-filter(mydata, gamma >= input$gamma) %>% top_n(1, -gamma)
+      return(paste0(gamma_min$cells[1], " cells required to sequence with confidence level 𝛾 = ", input$gamma))
+    })
+    
+    # BOX PLOT -----------------------------------------------------------------
+    
     output$box_jitter <- renderPlotly({
-        req(values$ret)
-        ret <- values$ret
+        req(runVals$ret())
+        ret <- runVals$ret()
         p <- create_box_jitter(
             per_tree_k=ret$per_tree_k,
             chosen_tree=values$chosenTree,
@@ -336,29 +102,24 @@ server <- function(input, output, session) {
         ggplotly(p, source="mysource")
     })
     
-    output$num_cells <- renderText({
-        req(values$ret)
-        ret <- values$ret
-        gamma_list <- ret$my_glist
-        cells_list <- ret$my_clist
-        mydata <- data.frame(gamma = gamma_list, cells = cells_list)
-        
-        if (!is.null(values$chosenTree)){
-            mydata <- filter(ret$per_tree_k, tree_id == as.numeric(values$chosenTree))
-        }
-        
-        gamma_min <-filter(mydata, gamma >= input$gamma) %>% top_n(1, -gamma)
-        return(paste0(gamma_min$cells[1], " cells required to sequence with confidence level 𝛾 = ", input$gamma))
+    output$box_title <- renderText({
+      req(runVals$ret())
+      ret <- runVals$ret()
+      q_t <- get_quantile_and_tree(ret$per_tree_k, values$chosenTree, input$gamma, values$chosenSample)
+      trunc_q <- sprintf("%.3f", q_t$quantile)
+      return(paste0("Tree #", q_t$tree, " with quantile = ", trunc_q))
     })
     
-    observe({
+    # GAMMA TOGGLES ------------------------------------------------------------
+    
+    observeEvent(runVals$confSliderArgs(),{
         # Control the value, min, max, and step.
         # Step size is 2 when input value is even; 1 when value is odd.
         updateSliderInput(session, "gamma",
-                          min = values$confSliderArgs$min, 
-                          max = values$confSliderArgs$max, 
-                          step = values$confSliderArgs$res,
-                          value = values$confSliderArgs$max
+                          min = runVals$confSliderArgs()$min,
+                          max = runVals$confSliderArgs()$max,
+                          step = as.numeric(runVals$confSliderArgs()$res),
+                          value = runVals$confSliderArgs()$max
                           )
     })
     
@@ -369,12 +130,7 @@ server <- function(input, output, session) {
         updateSliderInput(session, "gmax", min = input$gmin+0.01)
     })
     
-    output$box_title <- renderText({
-        req(values$ret)
-        q_t <- get_quantile_and_tree(values$ret$per_tree_k, values$chosenTree, input$gamma, values$chosenSample)
-        trunc_q <- sprintf("%.3f", q_t$quantile)
-        return(paste0("Tree #", q_t$tree, " with quantile = ", trunc_q))
-    })
+    # DOWNLOAD DATASETS --------------------------------------------------------
     
     output$downloadAML <- downloadHandler(
         filename = function(){
@@ -397,25 +153,82 @@ server <- function(input, output, session) {
     # Compare and Visualize Trees ----------------------------------------------
     values$d_graph1 <- callModule(treeVis,
                                   "tree1",
-                                  reactive(values$ret$parse_data),
-                                  reactive(values$ret$all_dff),
+                                  reactive(runVals$ret()$parse_data),
+                                  reactive(runVals$ret()$all_dff),
                                   treeToggles,
-                                  reactive(values$chosenSample)
+                                  runVals$chosenSample
     )
     
-    treeToggles <- callModule(treeVisToggles, "tree1input", reactive(values$ret), 
+    treeToggles <- callModule(treeVisToggles, "tree1input", runVals$ret, 
                               d_graph=values$d_graph1, dtn=values$datasetName,
                               chosenTree=reactive(values$tree1Num))
     
     values$d_graph2 <- callModule(treeVis,
                                   "tree2",
-                                  reactive(values$ret$parse_data),
-                                  reactive(values$ret$all_dff),
+                                  reactive(runVals$ret()$parse_data),
+                                  reactive(runVals$ret()$all_dff),
                                   treeToggles2,
-                                  reactive(values$chosenSample)
+                                  runVals$chosenSample
     )
     
-    treeToggles2 <- callModule(treeVisToggles, "tree2input", reactive(values$ret), 
+    treeToggles2 <- callModule(treeVisToggles, "tree2input", runVals$ret, 
                               d_graph=values$d_graph2, dtn=values$datasetName,
                               chosenTree=reactive(NULL))
+    
+    # RUN PHYDOSE --------------------------------------------------------------
+    runVals <- callModule(runPhydose, "runphydose",
+                   reactive(values$parse_data),
+                   reactive(values$all_dff),
+                   reactive(input$gmin), reactive(input$gmax), reactive(input$gresolution),
+                   reactive(input$fn), reactive(input$percentile), reactive(input$gamma),
+                   reactive(values$trig)
+               )
+    
+    observeEvent(runVals$ret(),{
+        values$chosenSample <- runVals$chosenSample()
+        values$chosenTree <- runVals$chosenTree()
+        values$tree1Num <- runVals$tree1Num()
+        values$confSliderArgs <- runVals$confSliderArgs()
+        values$ret <- runVals$ret()
+        shinyjs::show('mainpanel')
+    })
+    
+    # Simulation
+    observeEvent(input$runSim1, {
+      values$parse_data <- multsample
+      values$all_dff <- generateDistFeat(multsample$trees)
+      values$trig <- values$trig+1
+      values$datasetName <- "Sim1"
+    })
+    
+    # AML
+    observeEvent(input$runAML, {
+      values$parse_data <- AML38
+      values$all_dff <- AML38DFF
+      values$trig <- values$trig+1
+      values$datasetName <- "AML38"
+    })
+    
+    # main
+    observeEvent(input$run, {
+      if (is.null(input$file)){
+        showModal(modalDialog(
+          "Please upload a file or run an example dataset",
+          easyClose = TRUE
+        ))
+        return(NULL)
+      }
+      withProgress(message = 'Parsing file', value = 0, {
+        # 1. file is parsed to get trees, frequency matrix, and u matrix
+        incProgress(0.2, detail = "Getting trees and frequency matrices")
+        values$parse_data <- ReadJoint(input$file[['datapath']])
+        
+        #parse_data <- ALLPatient2
+        # 2. using output from file parse, call the getdff to get dff
+        incProgress(0.3, detail = "Finding distinguishing features...")
+        values$all_dff <- generateDistFeat(values$parse_data$trees)
+      })
+      values$datasetName <- input$file[['name']]
+      values$trig <- values$trig+1
+    })
 }

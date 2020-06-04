@@ -8,6 +8,14 @@ source("R/utils.R", local=TRUE)
 
 # UI MODULES -------------------------------------------------------------------
 
+runPhydoseInput <- function(id){
+    ns <- NS(id)
+    list(
+        actionButton("runPhydose","Run PhyDOSE", 
+                     style="margin: 6px 5px 6px 0px; width:90%")
+    )
+}
+
 treeVisTogglesInput <- function(id){
     ns <- NS(id)
     list(
@@ -34,6 +42,99 @@ treeVisOutput <- function(id){
 
 
 # SERVER MODULES ---------------------------------------------------------------
+
+runPhydose <- function(input, output, session,
+                       parse_data, all_dff,
+                       gmin, gmax, gresolution,
+                       fn, percentile, gamma, mytrig
+                       ){
+    values <- reactiveValues(
+        chosenTree = NULL, # this is changed by tree vis, reset button, and initial run, and is read by the graphs
+        tree1Num = NULL, # this is changed by the graphs, reset button, and initial run, and is read by tree 1
+        chosenSample = NULL,
+        ret = NULL,
+        confSliderArgs = list("min"=0,"max"=0.99,"res"=0.01)
+    )
+    
+    observeEvent(mytrig() , {
+        if(is.null(parse_data())){
+            return()
+        }
+        gmin <- gmin()
+        gmax <- gmax()
+        gresolution <-gresolution()
+        fn <- fn()
+        percentile <- percentile()
+        gamma <- gamma()
+        ret <- NULL
+        withProgress(message = 'Running PhyDOSE', value = 0, {
+            # 1. after getting the dff, call phydose multiple times to get data for plot
+            parse_data <- parse_data()
+            all_dff <- all_dff()
+            
+            incProgress(0.2, detail = "Calculating values of k...")
+            gamma_list <- seq(gmin, gmax, by=gresolution)
+            if ( tail(gamma_list, 1) != gmax ) {
+                gamma_list <- c(gamma_list, gmax)
+            } 
+            cells <- numeric(length(gamma_list))
+            index <- 1
+            per_tree_k <- data.frame(tree = character(), 
+                                     tree_id = numeric(), 
+                                     sample = numeric(), 
+                                     cells = numeric(),
+                                     gamma = numeric())
+            for(g in gamma_list){
+                incProgress(0.002, detail = paste("Calculating values for 𝛾 =", g))
+                phydose_ret <- phydose(
+                    parse_data$tree, 
+                    parse_data$fmatrices, 
+                    distFeat=all_dff,
+                    gamma = g,
+                    fnr = fn,
+                    kstar_quant = percentile
+                )
+                mydata <- phydose_ret$kTdata
+                mydata[["gamma"]] <- g
+                per_tree_k <- rbind(per_tree_k, mydata)
+                
+                cells[index] = phydose_ret$kstar
+                index = index + 1
+            }
+            
+            # 2. update UI
+            incProgress(0.1, detail = "Updating UI...")
+            # update the selection of trees
+            
+            incProgress(0.2, detail = "Done!")
+            ret <- list("my_glist"=gamma_list,
+                        "my_clist"=cells,
+                        "per_tree_k"=per_tree_k,
+                        "parse_data"=parse_data,
+                        "all_dff"=all_dff
+            )
+            incProgress(0.2, detail = "Done!!")
+        })
+        
+        values$ret <- ret
+        values$confSliderArgs <- list("min"=gmin,
+                                      "max"=gmax,
+                                      "res"=min(gresolution,gmax-gmin))
+        values$tree1Num <- get_max_tree(ret$per_tree_k, gmax)
+        values$chosenTree <- values$tree1Num
+        values$chosenSample <- get_best_sample(ret$per_tree_k, gmax)
+        shinyjs::show('mainpanel')
+    })
+    return(
+        list(
+            ret = reactive({ values$ret }),
+            confSliderArgs = reactive({ values$confSliderArgs }),
+            tree1Num = reactive({ values$tree1Num }),
+            chosenTree = reactive({ values$chosenTree }),
+            chosenSample = reactive({ values$chosenSample })
+        )
+    )
+}
 
 treeVisToggles <- function(input, output, session, 
                            ret, gamma=0.95, d_graph, dtn,
